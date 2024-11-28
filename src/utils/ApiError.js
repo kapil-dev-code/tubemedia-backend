@@ -12,7 +12,7 @@ export class ApiError extends Error {
         this.message = message
         this.success = false
         this.errors = errors
-// for tracking where is the error  remove the while push to the prod
+        // for tracking where is the error  remove the while push to the prod
         if (stack) {
             this.stack = stack
         }
