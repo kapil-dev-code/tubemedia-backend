@@ -38,5 +38,5 @@ const videoSchema = new Schema({
         timestamps: true
     }
 )
-videoSchema.plugin(mongooseAggregatePaginate) // add this before export and this is must because are going to use aggregate for this model
+videoSchema.plugin(mongooseAggregatePaginate) // add this before export and this is must because are going to use aggregate for this model and add pagination 
 export const Video = mongoose.model("Video", videoSchema)

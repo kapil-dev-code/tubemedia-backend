@@ -2,6 +2,7 @@ import mongoose, { Schema } from "mongoose";
 import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt"
 import { emailRegex } from "../constants.js"
+
 const userSchema = new Schema({
     userName: {
         type: String,
@@ -88,4 +89,7 @@ userSchema.methods.generateRefreshToken = function () {
         }
     )
 }
+
+
+
 export const User = mongoose.model("User", userSchema)

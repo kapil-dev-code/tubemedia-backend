@@ -1,6 +1,6 @@
 export const asyncHandler = (requestHandler) => {
     return (req, res, next) => {
-        Promise.resolve(requestHandler(req, res, next)).catch((error) => { next(error) })
+        Promise.resolve(requestHandler(req, res, next)).catch(next)  // work ie this catch((error) => { next(error) })
 
         //instead of catch we can use reject()
         // call next for not stop next statement 

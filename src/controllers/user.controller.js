@@ -165,17 +165,221 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
         return res
             .status(200)
             .cookie("accessToken", accessToken, options)
-            .cookie("refreshToken", refreshToken.options)
-                .json(
-                    new ApiResponse(
-                        200,
-                        { accessToken, refreshToken },
-                        "Access token refreshed successfully"
-    
-                    )
+            .cookie("refreshToken", refreshToken, options)
+            .json(
+                new ApiResponse(
+                    200,
+                    { accessToken, refreshToken },
+                    "Access token refreshed successfully"
+
                 )
+            )
     } catch (error) {
-        throw new ApiError(401,"Invalid refresh token")
+        throw new ApiError(401, "Invalid refresh token")
     }
-        
+
+})
+
+export const changeCurrentPassword = asyncHandler(async (req, res) => {
+    const { oldPassword, newPassword } = req.body
+    const user = req.user?._id // coming from auth middleware
+    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+    if (!isPasswordCorrect) {
+        throw new ApiError(400, "Invalid old password")
+    }
+    user.password = newPassword
+    await user.save({ validateBeforeSave: true }) // because we save this then this call pre method of userModel
+    return res
+        .status(200)
+        .json(new ApiResponse(200, {}, "Password changed successfully"))
+
+})
+
+export const getCurrentUser = asyncHandler(async (req, res) => {
+    const user = req.user
+    res
+        .status(200)
+        .json(new ApiResponse(200, user, "Current user fetched successfully"))
+})
+export const updateAccountDetails = asyncHandler(async (req, res) => {
+    const { fullName, email } = req.body
+    if (!fullName || !email) {
+        throw new ApiError(400, "All fields are required")
+    }
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                email,
+                fullName
+            }
+        },
+        {
+            new: true,           // Return the updated document
+            runValidators: true, // Trigger custom validators
+            context: 'query'     // Necessary for some Mongoose validators
+        }
+    ).select("-password")
+    res
+        .status(200)
+        .json(new ApiResponse(200, user, "Account details update successfully"),)
+})
+
+export const updateUserAvatar = asyncHandler(async (req, res) => {
+    const avatarLocalPath = req.file?.path
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "Avatar file is missing")
+    }
+    const avatar = await uploadOnCloudinary(avatarLocalPath)
+    if (!avatar.url) {
+        throw new ApiError(400, "Error while uploading on avatar")
+    }
+    const user = await User.findByIdAndUpdate(req.user?._id,
+        {
+            $set: {
+                avatar: avatar?.url
+            }
+        },
+        { new: true }
+    ).select("-password")
+    return res.status(200)
+        .json(new ApiResponse(200, user, "Avatar image updated successfully"))
+})
+export const updateUserCoverImage = asyncHandler(async (req, res) => {
+    const coverImageLocalPath = req.file?.path
+    if (!coverImageLocalPath) {
+        throw new ApiError(400, "Cover  file is missing")
+    }
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+    if (!coverImage.url) {
+        throw new ApiError(400, "Error while uploading on cover image")
+    }
+    const user = await User.findByIdAndUpdate(req.user?._id,
+        {
+            $set: {
+                coverImage: coverImage?.url
+            }
+        },
+        { new: true }
+    ).select("-password")
+    return res.status(200)
+        .json(new ApiResponse(200, user, "Cover image updated successfully"))
+})
+
+export const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { userName } = req.params
+    if (!userName?.trim()) {
+        throw new ApiError(400, "Username is missing")
+    }
+    const channel = await User.aggregate([{
+        $match: { userName: userName?.toLowerCase() }
+    },
+    {
+        $lookup: {
+            from: "Subscriptions",// model name in which we want watch and model name save with extra "s" in db so add s et the end of Subscription
+            localField: "_id",
+            foreignField: "channel",
+            as: "subscribers"
+
+        }
+    },
+    {
+        $lookup: {
+            from: "Subscriptions",
+            localField: "_id",
+            foreignField: "subscriber",
+            as: "subscribedTo"
+        }
+    },
+    {
+        $addFields: {
+            subscribersCount: {
+                $size: "$subscribers"
+            },
+            channelSubscribedToCount: {
+                $size: "$subscribedTo"
+            },
+            isSubscribed: {
+                $cond: {
+                    if: { in: [req.user?._id, "$subscribers.subscriber"] },// check usr?._id is present in subscribers.subscriber 
+                    then: true,
+                    else: false
+
+                }
+            }
+        }
+    },
+    {
+        $project: {
+            fullName: 1,
+            userName: 1,
+            subscribersCount: 1,
+            isSubscribed: 1,
+            avatar: 1,
+            coverImage: 1,
+            email: 1
+
+        }
+    }
+    ])
+    if (!channel?.length) {
+        throw new ApiError(404, "Channel done not exists")
+    }
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200, channel?.[0], "User channel fetched successfully")
+        )
+})
+
+export const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.aggregate([
+        // Step 1: Match the current user's ID from the request
+        {
+            $match: {
+                _id: mongoose.Types.ObjectId(req.user?._id)
+                // Converts string ID from request into ObjectId to match with MongoDB's _id field.
+            }
+        },
+
+        // Step 2: Lookup the user's watch history (referencing the 'videos' collection)
+        {
+            $lookup: {
+                from: "videos",  // Looking up the 'videos' collection
+                localField: "watchHistory",  // 'watchHistory' is an array of video IDs in the user document
+                foreignField: "_id",  // We're matching the IDs in 'watchHistory' with the '_id' field of the 'videos' collection
+                as: "watchHistory",  // The result will be stored in the 'watchHistory' field as an array of video documents
+                pipeline: [  // Here, we specify additional stages to process the data further
+                    // Step 3: Lookup the 'owner' of each video from the 'Users' collection
+                    {
+                        $lookup: {
+                            from: "Users",  // Looking up the 'Users' collection to get owner details of each video
+                            localField: "owner",  // The 'owner' field of each video references the User's ID
+                            foreignField: "_id",  // Matching the 'owner' field in video with '_id' in the 'Users' collection
+                            as: "owner",  // This will store the owner data in an array named 'owner'
+                            pipeline: [  // Further processing of the 'owner' field
+                                // Step 4: Project the required fields for the owner (fullName, userName, avatar)
+                                {
+                                    $project: {
+                                        fullName: 1,  // Including 'fullName' in the output
+                                        userName: 1,  // Including 'userName' in the output
+                                        avatar: 1     // Including 'avatar' in the output
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    // Step 5: Add fields to select the first (and only) owner from the 'owner' array
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner"  // Because 'owner' is an array, we extract the first element (as there's usually only one)
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]);
+
 })
