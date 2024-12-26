@@ -151,7 +151,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     try {
         const decodedToken = await jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
         const user = await User.findById(decodedToken?._id)
-        console.log(user,"user")
+        console.log(user, "user")
         if (!user) {
             throw new ApiError(401, "Invalid refresh token")
         }
@@ -163,7 +163,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
             secure: true
         }
         const { refreshToken, accessToken } = await generateAccessAndRefreshTokens(user._id)
-        console.log(refreshToken,accessToken)
+        console.log(refreshToken, accessToken)
         return res
             .status(200)
             .cookie("accessToken", accessToken, options)
@@ -185,7 +185,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
 
 export const changeCurrentPassword = asyncHandler(async (req, res) => {
     const { oldPassword, newPassword } = req.body
-    const user = await User.findById(req.user?._id )// coming from auth middleware
+    const user = await User.findById(req.user?._id)// coming from auth middleware
     if (!user) {
         throw new ApiError(400, "User does not exist")
     }
@@ -239,7 +239,7 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user?._id).select("avatar");
 
     if (user?.avatar) {
-        await deleteFromCloudinary(user.avatar); 
+        await deleteFromCloudinary(user.avatar);
     }
     const avatar = await uploadOnCloudinary(avatarLocalPath)
     if (!avatar.url) {
@@ -261,11 +261,15 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
     if (!coverImageLocalPath) {
         throw new ApiError(400, "Cover  file is missing")
     }
+    const user = await User.findById(req.user?._id).select("coverImage");
+    if (user?.coverImage) {
+        await deleteFromCloudinary(user.coverImage);
+    }
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
     if (!coverImage.url) {
         throw new ApiError(400, "Error while uploading on cover image")
     }
-    const user = await User.findByIdAndUpdate(req.user?._id,
+    const updatedUser = await User.findByIdAndUpdate(req.user?._id,
         {
             $set: {
                 coverImage: coverImage?.url
@@ -274,7 +278,25 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
         { new: true }
     ).select("-password")
     return res.status(200)
-        .json(new ApiResponse(200, user, "Cover image updated successfully"))
+        .json(new ApiResponse(200, updatedUser, "Cover image updated successfully"))
+})
+export const deleteUserCoverImage = asyncHandler(async (req, res) => {
+
+    const user = await User.findById(req.user?._id).select("coverImage");
+    if (user?.coverImage) {
+        await deleteFromCloudinary(user.coverImage);
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(req.user?._id,
+        {
+            $set: {
+                coverImage: ""
+            }
+        },
+        { new: true, runValidators: true }
+    ).select("-password")
+    return res.status(200)
+        .json(new ApiResponse(200, updatedUser, "Cover image deleted successfully"))
 })
 
 export const getUserChannelProfile = asyncHandler(async (req, res) => {
@@ -392,6 +414,6 @@ export const getWatchHistory = asyncHandler(async (req, res) => {
             }
         }
     ]);
-return res.status(200)
-.json(new ApiResponse(200,user[0]?.watchHistory,"Watch history fetched successfully"))
+    return res.status(200)
+        .json(new ApiResponse(200, user[0]?.watchHistory, "Watch history fetched successfully"))
 })
