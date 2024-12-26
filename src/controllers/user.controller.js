@@ -2,7 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler.js"
 import { ApiError } from "../utils/ApiError.js"
 import jwt from "jsonwebtoken"
 import { User } from "../models/user.model.js"
-import { uploadOnCloudinary } from "../utils/cloudinary.js"
+import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 
 export const generateAccessAndRefreshTokens = async (userId) => {
@@ -149,8 +149,9 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
         throw new ApiError(401, "Unauthorized request")
     }
     try {
-        const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+        const decodedToken = await jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
         const user = await User.findById(decodedToken?._id)
+        console.log(user,"user")
         if (!user) {
             throw new ApiError(401, "Invalid refresh token")
         }
@@ -161,7 +162,8 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
             httpOnly: true,
             secure: true
         }
-        const { refreshToken, accessToken } = await generateAccessAndRefreshTokens(user_id)
+        const { refreshToken, accessToken } = await generateAccessAndRefreshTokens(user._id)
+        console.log(refreshToken,accessToken)
         return res
             .status(200)
             .cookie("accessToken", accessToken, options)
@@ -175,6 +177,7 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
                 )
             )
     } catch (error) {
+        console.log(error)
         throw new ApiError(401, "Invalid refresh token")
     }
 
@@ -182,7 +185,10 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
 
 export const changeCurrentPassword = asyncHandler(async (req, res) => {
     const { oldPassword, newPassword } = req.body
-    const user = req.user?._id // coming from auth middleware
+    const user = await User.findById(req.user?._id )// coming from auth middleware
+    if (!user) {
+        throw new ApiError(400, "User does not exist")
+    }
     const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
     if (!isPasswordCorrect) {
         throw new ApiError(400, "Invalid old password")
@@ -230,11 +236,16 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
     if (!avatarLocalPath) {
         throw new ApiError(400, "Avatar file is missing")
     }
+    const user = await User.findById(req.user?._id).select("avatar");
+
+    if (user?.avatar) {
+        await deleteFromCloudinary(user.avatar); 
+    }
     const avatar = await uploadOnCloudinary(avatarLocalPath)
     if (!avatar.url) {
         throw new ApiError(400, "Error while uploading on avatar")
     }
-    const user = await User.findByIdAndUpdate(req.user?._id,
+    const updatedUser = await User.findByIdAndUpdate(req.user?._id,
         {
             $set: {
                 avatar: avatar?.url
@@ -243,7 +254,7 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
         { new: true }
     ).select("-password")
     return res.status(200)
-        .json(new ApiResponse(200, user, "Avatar image updated successfully"))
+        .json(new ApiResponse(200, updatedUser, "Avatar image updated successfully"))
 })
 export const updateUserCoverImage = asyncHandler(async (req, res) => {
     const coverImageLocalPath = req.file?.path
@@ -381,5 +392,6 @@ export const getWatchHistory = asyncHandler(async (req, res) => {
             }
         }
     ]);
-
+return res.status(200)
+.json(new ApiResponse(200,user[0]?.watchHistory,"Watch history fetched successfully"))
 })
