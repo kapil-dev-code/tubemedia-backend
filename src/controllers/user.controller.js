@@ -100,15 +100,21 @@ export const loginUser = asyncHandler(async (req, res) => {
     const user = await User.findOne({
         $or: [{ userName }, { email }]
     }) // this alow give custom methods that is define in User schema
+
     if (!user) {
         throw new ApiError(400, "User does not exist")
     }
+
     const isPasswordValid = await user.isPasswordCorrect(password)
     if (!isPasswordValid) {
         throw new ApiError(401, "Invalid user credentials")
     }
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
 
+    if (user?.deletionDate) {
+        user.deletionDate = null;
+        await user.save();
+    }
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
     // modify only server
     const options = {
@@ -207,6 +213,42 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
         .status(200)
         .json(new ApiResponse(200, user, "Current user fetched successfully"))
 })
+export const deleteUser = asyncHandler(async (req, res) => {
+    const deletionDate = new Date();
+    deletionDate.setMonth(deletionDate.getMonth() + 1);
+    const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        { $set: { deletionDate } },
+        { new: true }
+    );
+
+    return res.status(200)
+        .json(new ApiResponse(200, { deletionDate }, "User marked for deletion after one month"))
+})
+
+export const cancelUserDeletion = asyncHandler(async (req, res) => {
+    try {
+        const userId = req.user?._id;
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $unset: { deletionDate: "" } },
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json(new ApiResponse(404, null, "User not found"));
+        }
+
+        return res.status(200).json(
+            new ApiResponse(200, {}, "User deletion request canceled successfully")
+        );
+    } catch (error) {
+        console.error("Error canceling user deletion:", error);
+        return res.status(500).json(new ApiResponse(500, null, "An error occurred"));
+    }
+});
+
+
 export const updateAccountDetails = asyncHandler(async (req, res) => {
     const { fullName, email } = req.body
     if (!fullName || !email) {

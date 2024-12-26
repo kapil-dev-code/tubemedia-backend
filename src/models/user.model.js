@@ -48,6 +48,11 @@ const userSchema = new Schema({
     },
     refreshToken: {
         type: String
+    },
+    deletionDate: { 
+        type: Date, 
+        // index: true,
+        default: null 
     }
 },
     {
@@ -55,6 +60,10 @@ const userSchema = new Schema({
 
     }
 )
+// Add a partial index for deletionDate
+userSchema.index({ deletionDate: 1 }, { partialFilterExpression: { deletionDate: { $exists: true } } });
+
+
 userSchema.pre("save", async function (next) {
     if (!this.isModified("password"))
         return next() // isModified by default available here that check field is modified or not

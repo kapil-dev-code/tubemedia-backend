@@ -1,6 +1,7 @@
 import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
+import "./backgroundJobs/deleteUser.js"
 export const app = express()
 
 app.use(cors({
