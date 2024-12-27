@@ -2,8 +2,9 @@ import { asyncHandler } from "../utils/asyncHandler.js"
 import { ApiError } from "../utils/ApiError.js"
 import jwt from "jsonwebtoken"
 import { User } from "../models/user.model.js"
-import { deleteFromCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js"
+import { deleteFromCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
+import { uploadFileToCloudinary } from "../utils/uploadFileToCloudinary.js"
 
 export const generateAccessAndRefreshTokens = async (userId) => {
     try {
@@ -37,12 +38,7 @@ const checkUserExists = async (email, userName) => {
 };
 
 
-const uploadFileToCloudinary = async (filePath, fieldName) => {
-    if (!filePath) throw new ApiError(400, `${fieldName} file is required`);
-    const uploadResponse = await uploadOnCloudinary(filePath);
-    if (!uploadResponse?.url) throw new ApiError(400, `Failed to upload ${fieldName}`);
-    return uploadResponse.url;
-};
+
 export const registerUser = asyncHandler(async (req, res) => {
     // get user details from frontend
     // validation - not empty
@@ -226,27 +222,27 @@ export const deleteUser = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, { deletionDate }, "User marked for deletion after one month"))
 })
 
-export const cancelUserDeletion = asyncHandler(async (req, res) => {
-    try {
-        const userId = req.user?._id;
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { $unset: { deletionDate: "" } },
-            { new: true }
-        );
+// export const cancelUserDeletion = asyncHandler(async (req, res) => {
+//     try {
+//         const userId = req.user?._id;
+//         const updatedUser = await User.findByIdAndUpdate(
+//             userId,
+//             { $unset: { deletionDate: "" } },
+//             { new: true }
+//         );
 
-        if (!updatedUser) {
-            return res.status(404).json(new ApiResponse(404, null, "User not found"));
-        }
+//         if (!updatedUser) {
+//             return res.status(404).json(new ApiResponse(404, null, "User not found"));
+//         }
 
-        return res.status(200).json(
-            new ApiResponse(200, {}, "User deletion request canceled successfully")
-        );
-    } catch (error) {
-        console.error("Error canceling user deletion:", error);
-        return res.status(500).json(new ApiResponse(500, null, "An error occurred"));
-    }
-});
+//         return res.status(200).json(
+//             new ApiResponse(200, {}, "User deletion request canceled successfully")
+//         );
+//     } catch (error) {
+//         console.error("Error canceling user deletion:", error);
+//         return res.status(500).json(new ApiResponse(500, null, "An error occurred"));
+//     }
+// });
 
 
 export const updateAccountDetails = asyncHandler(async (req, res) => {
@@ -283,14 +279,12 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
     if (user?.avatar) {
         await deleteFromCloudinary(user.avatar);
     }
-    const avatar = await uploadOnCloudinary(avatarLocalPath)
-    if (!avatar.url) {
-        throw new ApiError(400, "Error while uploading on avatar")
-    }
+    const avatarUrl = await uploadFileToCloudinary(avatarLocalPath,"avatar")
+   
     const updatedUser = await User.findByIdAndUpdate(req.user?._id,
         {
             $set: {
-                avatar: avatar?.url
+                avatar: avatarUrl
             }
         },
         { new: true }
@@ -307,14 +301,12 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
     if (user?.coverImage) {
         await deleteFromCloudinary(user.coverImage);
     }
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
-    if (!coverImage.url) {
-        throw new ApiError(400, "Error while uploading on cover image")
-    }
+    const coverImageUrl = await uploadFileToCloudinary(coverImageLocalPath,"cover-image")
+ 
     const updatedUser = await User.findByIdAndUpdate(req.user?._id,
         {
             $set: {
-                coverImage: coverImage?.url
+                coverImage: coverImageUrl
             }
         },
         { new: true }
