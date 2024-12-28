@@ -6,6 +6,7 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 import { getMediaDuration } from "../utils/getMediaDuration.js"
 import { uploadFileToCloudinary } from "../utils/uploadFileToCloudinary.js"
 import mongoose from "mongoose"
+import { WatchedVideo } from "../models/watchedVideo.modal.js"
 const uploadVideo = asyncHandler(async (req, res) => {
     const { title, description, duration = 1 } = req.body
     if (!title || !description) {
@@ -106,8 +107,64 @@ const deleteVideo = asyncHandler(async (req, res) => {
     if (!video) {
         throw new ApiError(403, "You are not authorized to delete this video or it doesn't exist");
     }
+    if (video?.videoFile) {
+        await deleteFromCloudinary(video?.videoFile);
+    }
+    if (video?.thumbnail) {
+        await deleteFromCloudinary(video?.thumbnail);
+    }
     await video.deleteOne();
     return res.status(200).json(new ApiResponse(200, {}, "Video deleted successfully"));
 
 })
-export { uploadVideo, getAllPaginatedVideo, getSingleVideo, getVideosByUploader, deleteVideo }
+
+
+const watchVideo = asyncHandler(async (req, res) => {
+
+    const { videoId } = req.params;
+    const userId = req.user?._id; // User ID from authentication middleware, if logged in
+
+    if (!videoId) {
+        throw new ApiError(400, "Video ID is required")
+    }
+
+    const video = await Video.findById(videoId);
+    if (!video) {
+        throw new ApiError(404, "Video not found")
+    }
+
+    let incrementView = false;
+
+    if (userId) {
+         const updateResult = await User.updateOne(
+            { _id: userId },
+            { $addToSet: { watchHistory: videoId } } // Add videoId if it doesn't already exist
+        );
+
+        if (updateResult.nModified > 0) {
+            incrementView = true; // Increment views only if watchHistory was updated
+        }
+    } else {
+        const watchedVideos = req.cookies?.watchedVideos || [];
+        if (!watchedVideos.includes(videoId)) {
+            incrementView = true;
+            res.cookie("watchedVideos", [...watchedVideos, videoId], { httpOnly: true });
+        }
+    }
+
+    if (incrementView) {
+        video.views += 1;
+        await video.save();
+    }
+    return res.status(200).json(new ApiResponse(200, video, "video played successfully"));
+
+})
+
+export {
+    uploadVideo,
+    getAllPaginatedVideo,
+    getSingleVideo,
+    getVideosByUploader,
+    deleteVideo,
+    watchVideo
+}

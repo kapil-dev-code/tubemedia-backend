@@ -1,7 +1,8 @@
 import { Router } from "express"
 import { upload } from "../middlewares/multer.middleware.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js"
-import { uploadVideo, getAllPaginatedVideo, getSingleVideo, getVideosByUploader, deleteVideo } from "../controllers/video.controller.js"
+import { uploadVideo, getAllPaginatedVideo, getSingleVideo, getVideosByUploader, deleteVideo, watchVideo } from "../controllers/video.controller.js"
+import { optionalJWT } from "../middlewares/optionalAuth.middleware.js"
 const router = Router()
 
 router.route("/upload").post(verifyJWT, upload.fields([
@@ -18,5 +19,6 @@ router.route("/upload").post(verifyJWT, upload.fields([
 router.route("/").get(getAllPaginatedVideo)
 router.route("/:id").get(getSingleVideo).delete(verifyJWT, deleteVideo)
 router.route("/uploader/:userId").get(getVideosByUploader)
+router.get("/video/:videoId", optionalJWT, watchVideo);
 
 export default router
