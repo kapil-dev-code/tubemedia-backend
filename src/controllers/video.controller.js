@@ -83,15 +83,15 @@ const getAllPaginatedVideo = asyncHandler(async (req, res) => {
     return res.status(200)
         .json(new ApiResponse(200, videos, "Videos fetched successfully"))
 })
-const getSingleVideo = asyncHandler(async (req, res) => {
-    const { id } = req.params
-    const video = await Video.findById(id)
-    if (!video) {
-        throw new ApiError(400, "Video not found")
-    }
-    return res.status(200).json(new ApiResponse(200, video, "Video fetched successfully"))
+// const getSingleVideo = asyncHandler(async (req, res) => {
+//     const { id } = req.params
+//     const video = await Video.findById(id)
+//     if (!video) {
+//         throw new ApiError(400, "Video not found")
+//     }
+//     return res.status(200).json(new ApiResponse(200, video, "Video fetched successfully"))
 
-})
+// })
 const getVideosByUploader = asyncHandler(async (req, res) => {
     const { userId } = req.params
     const video = await Video.find({ videoUploader: userId }).populate("videoUploader", "userName fullName avatar")
@@ -121,7 +121,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
 const watchVideo = asyncHandler(async (req, res) => {
 
-    const { videoId } = req.params;
+    const { id:videoId } = req.params;
     const userId = req.user?._id; // User ID from authentication middleware, if logged in
 
     if (!videoId) {
@@ -163,7 +163,7 @@ const watchVideo = asyncHandler(async (req, res) => {
 export {
     uploadVideo,
     getAllPaginatedVideo,
-    getSingleVideo,
+    // getSingleVideo,
     getVideosByUploader,
     deleteVideo,
     watchVideo

@@ -5,6 +5,8 @@ import { User } from "../models/user.model.js"
 import { deleteFromCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { uploadFileToCloudinary } from "../utils/uploadFileToCloudinary.js"
+import { sendEmailVerificationCode, sendForgetPasswordEmail } from "../utils/sendEmailVerification.js"
+import { EmailVerification } from "../models/emailVerification.modal.js"
 
 export const generateAccessAndRefreshTokens = async (userId) => {
     try {
@@ -71,14 +73,55 @@ export const registerUser = asyncHandler(async (req, res) => {
         avatar: avatarUrl,
         coverImage: coverImageUrl
     });
-
-    const createdUser = await User.findById(newUser._id).select("-password -refreshToken")
+    await sendEmailVerificationCode(req, newUser)
+    const createdUser = await User.findById(newUser._id).select("-password -refreshToken,-deletionDate")
     if (!createdUser) {
         throw new ApiError(500, "Something went wrong while registering the user")
     }
     return res.status(201).json(
-        new ApiResponse(200, createdUser, "User registered successfully")
+        new ApiResponse(200, createdUser, "User registered successfully please verify otp")
     )
+})
+
+export const userEmailVerification = asyncHandler(async (req, res) => {
+    const { email, otp } = req.body
+    if (!email || !otp) {
+        throw new ApiError(400, "All fields are required")
+    }
+    const user = await User.findOne({ email })
+    if (!user) {
+        throw new ApiError(400, "Email done not exist")
+    }
+    if (user.isVerified) {
+        throw new ApiError(400, "Email is already verified")
+    }
+    const emailVerification = await EmailVerification.findOne(({ userId: user._id, otp }))
+    if (!emailVerification) {
+        throw new ApiError(400, "Invalid or expired verification code");
+    }
+
+    // Mark the user as verified
+    user.isVerified = true;
+    await user.save();
+    await EmailVerification.deleteMany({ _id: emailVerification._id });
+
+    return res.status(200).json(new ApiResponse(200, {}, "Email verified successfully"));
+})
+export const resendOtp = asyncHandler(async (req, res) => {
+    const { email } = req.body
+    if (!email) {
+        throw new ApiError(400, "All fields are required")
+    }
+    const user = await User.findOne({ email })
+    if (!user) {
+        throw new ApiError(400, "Email done not exist")
+    }
+    if (user.isVerified) {
+        throw new ApiError(400, "Email is already verified")
+    }
+    await sendEmailVerificationCode(req, user)
+    return res.status(200).json(new ApiResponse(200, {}, "Verification email resent successfully"));
+
 })
 
 export const loginUser = asyncHandler(async (req, res) => {
@@ -99,6 +142,9 @@ export const loginUser = asyncHandler(async (req, res) => {
 
     if (!user) {
         throw new ApiError(400, "User does not exist")
+    }
+    if (!user?.isVerified) {
+        throw new ApiError(400, "Your account is not verified")
     }
 
     const isPasswordValid = await user.isPasswordCorrect(password)
@@ -153,7 +199,6 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     try {
         const decodedToken = await jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
         const user = await User.findById(decodedToken?._id)
-        console.log(user, "user")
         if (!user) {
             throw new ApiError(401, "Invalid refresh token")
         }
@@ -202,6 +247,53 @@ export const changeCurrentPassword = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, {}, "Password changed successfully"))
 
 })
+
+export const resetPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body
+    if (!email) {
+        throw new ApiError(400, "Email is required")
+    }
+    const user = await User.findOne({ email })
+    if (!user) {
+        throw new ApiError(400, "Email address does not exist")
+    }
+    const resetToken = await user.generateResetToken()
+    await sendForgetPasswordEmail(user, resetToken)
+    return res.status(200).json(new ApiResponse(200, {}, "Reset password link send to your email please confirm password"))
+})
+export const confirmResetPassword = asyncHandler(async (req, res) => {
+    const { password, confirmPassword } = req.body;
+    const { token } = req.params;
+
+    if (!token) {
+        throw new ApiError(400, "Token is required");
+    }
+
+    if (!password || !confirmPassword) {
+        throw new ApiError(400, "Password and confirm password are required");
+    }
+
+    if (password !== confirmPassword) {
+        throw new ApiError(400, "Password and confirm password do not match");
+    }
+
+    let decodedToken;
+    try {
+        decodedToken = await jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    } catch (error) {
+        throw new ApiError(401, "Invalid or expired token");
+    }
+
+    const user = await User.findById(decodedToken._id);
+    if (!user) {
+        throw new ApiError(404, "User does not exist");
+    }
+
+    user.password = password; 
+    await user.save();
+
+    return res.status(200).json(new ApiResponse(200,{},"Password has been reset successfully"));
+});
 
 export const getCurrentUser = asyncHandler(async (req, res) => {
     const user = req.user
@@ -279,8 +371,8 @@ export const updateUserAvatar = asyncHandler(async (req, res) => {
     if (user?.avatar) {
         await deleteFromCloudinary(user.avatar);
     }
-    const avatarUrl = await uploadFileToCloudinary(avatarLocalPath,"avatar")
-   
+    const avatarUrl = await uploadFileToCloudinary(avatarLocalPath, "avatar")
+
     const updatedUser = await User.findByIdAndUpdate(req.user?._id,
         {
             $set: {
@@ -301,8 +393,8 @@ export const updateUserCoverImage = asyncHandler(async (req, res) => {
     if (user?.coverImage) {
         await deleteFromCloudinary(user.coverImage);
     }
-    const coverImageUrl = await uploadFileToCloudinary(coverImageLocalPath,"cover-image")
- 
+    const coverImageUrl = await uploadFileToCloudinary(coverImageLocalPath, "cover-image")
+
     const updatedUser = await User.findByIdAndUpdate(req.user?._id,
         {
             $set: {

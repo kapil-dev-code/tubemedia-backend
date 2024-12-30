@@ -49,10 +49,14 @@ const userSchema = new Schema({
     refreshToken: {
         type: String
     },
-    deletionDate: { 
-        type: Date, 
+    deletionDate: {
+        type: Date,
         // index: true,
-        default: null 
+        default: null
+    },
+    isVerified:{
+        type:Boolean,
+        default:false
     }
 },
     {
@@ -95,6 +99,16 @@ userSchema.methods.generateRefreshToken = function () {
         process.env.REFRESH_TOKEN_SECRET,
         {
             expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+        }
+    )
+}
+userSchema.methods.generateResetToken = function () {
+    return jwt.sign({
+        _id: this._id,
+    },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn:"15m"
         }
     )
 }
